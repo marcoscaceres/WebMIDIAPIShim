@@ -1,277 +1,393 @@
-//init: create plugin
-window.addEventListener('load', function() {
-    if (window.navigator.getMIDIAccess)
-      return; // Must already support Web MIDI API.
-
-    window.navigator.getMIDIAccess = _getMIDIAccess;
-});
-
-function _JazzInstance( instanceNumber ) {
-  this.inputInUse = false;
-  this.outputInUse = false;
-
-  // load the Jazz plugin
-  var o1 = document.createElement("object");
-  o1.id = "_Jazz" + instanceNumber + "ie";
-  o1.classid = "CLSID:1ACE1618-1C7D-4561-AEE1-34842AA85E90";
-
-  this.activeX = o1;
-
-  var o2 = document.createElement("object");
-  o2.id = "_Jazz" + instanceNumber; 
-  o2.type="audio/x-jazz";
-  o1.appendChild(o2);
-
-  this.objRef = o2;
-
-  var e = document.createElement("p");
-  e.appendChild(document.createTextNode("This page requires the "));
-
-  var a = document.createElement("a");
-  a.appendChild(document.createTextNode("Jazz plugin"));
-  a.href = "http://jazz-soft.net/";
-
-  e.appendChild(a);
-  e.appendChild(document.createTextNode("."));
-  o2.appendChild(e);
-
-  var insertionPoint = document.getElementById("MIDIPlugin");
-  if (!insertionPoint)
-      insertionPoint = document.body;
-  insertionPoint.appendChild(o1);
-
-  if (this.objRef.isJazz)
-    this._Jazz = this.objRef;
-  else if (this.activeX.isJazz)
-    this._Jazz = this.activeX;
-  else
-    this._Jazz = null;
-  if (this._Jazz) {
-    this._Jazz._jazzTimeZero = this._Jazz.Time();
-    this._Jazz._perfTimeZero = window.performance.now();
-  }
-}
-
-function _getMIDIAccess( successCallback, errorCallback ) {
-    new MIDIAccess( successCallback, errorCallback );
-    return;
-}
-
-
-// API Methods
-
-function MIDIAccess( successCallback, errorCallback ) {
-    this._jazzInstances = new Array();
-    this._jazzInstances.push( new _JazzInstance() );
-
-    if (this._jazzInstances[0]._Jazz) {
-      this._Jazz = this._jazzInstances[0]._Jazz;
-      this._successCallback = successCallback;
-      window.setTimeout( _onReady.bind(this), 3 );
-    } else {
-        if (errorCallback)
-          errorCallback( { code: 1 } );
+/*
+TODO: File bug about missing strigifier, which Chris had defined.
+*/
+(function(global, exports, perf) {
+    'use strict';
+    var midiIO,
+        debug = true;
+    if (debug) {
+        window.console.warn('Debuggin enabled');
     }
-}
-
-function _onReady() {
-    if (this._successCallback)
-        this._successCallback( this );
-}
-
-MIDIAccess.prototype.enumerateInputs = function(  ) {
-    if (!this._Jazz)
-        return null;
-    var list=this._Jazz.MidiInList();
-    var inputs = new Array( list.length );
-  
-    for ( var i=0; i<list.length; i++ ) {
-        inputs[i] = new MIDIPort( this, list[i], i, "input" );
+    function requestMIDIAccess(successCallback, errorCallback) {
+        function accessGranted(accessor) {
+            successCallback(accessor);
+        }
+        if (typeof successCallback !== 'function') {
+            throw new TypeError('expected function');
+        }
+        midiIO.requestAccess(accessGranted, errorCallback);
     }
-    return inputs;
-}
-
-MIDIAccess.prototype.enumerateOutputs = function(  ) {
-    if (!this._Jazz)
-        return null;
-    var list=this._Jazz.MidiOutList();
-    var outputs = new Array( list.length );
-  
-    for ( var i=0; i<list.length; i++ ) {
-        outputs[i] = new MIDIPort( this, list[i], i, "output" );
+    if ('getMIDIAccess' in exports) {
+        return; // namespace is taken already, bail!
     }
-    return outputs;
-}
+    midiIO = new JazzPlugin();
+    Object.defineProperty(exports, 'requestMIDIAccess', {
+        value: requestMIDIAccess
+    });
+    /*
+    creates instances of the Jazz plugin (http://jazz-soft.net/)
+    The plugin exposes the following methods (v1.2):
+    MidiInClose()
+    MidiInList()
+    MidiInOpen()
+    MidiOut()
+    MidiOutClose()
+    MidiOutList()
+    MidiOutLong()
+    MidiOutOpen()
+    Support()
+    Time()
+    version
+    See also: http://jazz-soft.net/doc/Jazz-Plugin/reference.html
+    */
+    function JazzPlugin() {
+        var self = this,
+            plugin = loadPlugin(),
+            timeZero = 0,
+            perfTimeZero = perf.now(),
+            permitted = null,
+            inputPorts = [],
+            outputPorts = [],
+            dispatcher = document.createElement('x-eventDispatcher'),
+            interfaces = {
+                timeZero: {
+                    get: function() {
+                        return timeZero;
+                    }
+                },
+                perfTimeZero: {
+                    get: function() {
+                        return perfTimeZero;
+                    }
+                },
+                time: {
+                    get: function() {
+                        return plugin.Time();
+                    }
+                },
+                requestAccess: {
+                    value: checkPermission
+                },
+                midiInList: {
+                    get: function() {
+                        return inputPorts;
+                    }
+                },
+                midiOutList: {
+                    get: function() {
+                        return outputPorts;
+                    }
+                },
+                midiInOpen: {
+                    value: function(name, callback) {
+                        //TODO: check if authorized
+                        plugin.MidiInOpen(name, callback);
+                    }
+                },
+                midiOutLong: {
+                    value: function(data, name) {
+                        if (plugin.MidiOutOpen(name) === name) {
+                            //plugin.MidiOut(0x90,60,100);
+                            plugin.MidiOutLong(data);
+                        }
+                    }
+                }
+            };
+        //once we are allowed, lets get the ports list
+        dispatcher.addEventListener('allowed', function(e) {
+            inputPorts = createPorts(e.data.inputPorts, 'input');
+            outputPorts = createPorts(e.data.outputPorts, 'output');
+        });
 
-MIDIAccess.prototype.getInput = function( target ) {
-    if (target==null)
-        return null;
-    return new MIDIInput( this, target );
-}
+        function createPorts(list, type) {
+            var ports = [];
+            for (var i = 0, name = '', l = list.length; i < l; i++) {
+                name = String(list[i]);
+                ports[i] = new MIDIPort(name, type);
+            }
+            return ports;
+        }
 
-MIDIAccess.prototype.getOutput = function( target ) {
-    if (target==null)
-        return null;
-    return new MIDIOutput( this, target );
-}
+        function checkPermission(successCB, errorCB) {
+            //going to ask permission for the first time
+            if (permitted === null) {
+                requestPermission(plugin);
+                dispatcher.addEventListener('allowed', function() {
+                    successCB(new MIDIAccess());
+                });
+                if (errorCB && typeof errorCB === 'function') {
+                    dispatcher.addEventListener('denied', function(e) {
+                        errorCB(new Error(e.data));
+                    });
+                }
+                return;
+            }
+            if (permitted === true) {
+                successCB(new MIDIAccess());
+                return;
+            }
+            errorCB(new Error('SecurityError'));
+        }
+        //loads the Jazz plugin by creating an <object>
+        function loadPlugin() {
+            var plugin,
+            msg = 'Failed to initialize. Maybe missing Jazz plugin? http://jazz-soft.net/',
+                elemId = '_Jazz' + Math.random(),
+                objElem = document.createElement('object'),
+                fallbackObj = objElem.cloneNode();
+            objElem.id = elemId + 'ie';
+            objElem.classid = 'CLSID:1ACE1618-1C7D-4561-AEE1-34842AA85E90';
+            fallbackObj.id = elemId;
+            fallbackObj.type = 'audio/x-jazz';
+            objElem.appendChild(fallbackObj);
+            document.documentElement.appendChild(objElem);
+            plugin = (fallbackObj.isJazz === true) ? fallbackObj : objElem;
+            if (!plugin instanceof window.HTMLObjectElement || !(plugin.isJazz)) {
+                var e = new window.CustomEvent('error');
+                e.data('NotSupportedError');
+                dispatcher.dispatchEvent(e);
+                return null;
+            }
+            //Initialize
+            plugin.MidiOut(0x80, 0, 0);
+            return plugin;
+        }
 
-function MIDIPort( midi, port, index, type ) {
-    this._index = index;
-    this._midi = midi;
-    this.type = type;
+        function requestPermission(plugin) {
+            var div = document.createElement('div'),
+                style = document.createElement('style'),
+                okButton = document.createElement('button'),
+                cancelButton = document.createElement('button'),
+                id = 'dialog_' + (Math.round(Math.random() * 1000000) + 10000),
+                markup = '',
+                css = '';
+            css += '#' + id + '{ ' + 'width: 60%; ' + 'box-shadow: 0px 2px 20px black; z-index: 1000;' + ' left: 20%; background-color: #aaa;' + ' padding: 3em;' + '} ' + '.hidden{ top: -' + Math.round(window.innerHeight) + 'px; -webkit-transition: all .2s ease-in;}' + '.show{top: 0px; -webkit-transition: all .2s ease-out;}';
+            style.innerHTML = css;
+            div.id = id;
+            markup += '<div>' + '<h1>♫ MIDI ♫</h1>' + '<p>' + window.location.host + ' wants to access your MIDI devices.</p>' + '<p><strong>Input Devices:</strong> ' + plugin.MidiInList().join(', ') + '.</p>' + '<p><strong>Output Devices:</strong> ' + plugin.MidiOutList().join(', ') + '.</p>' + '</div>';
+            okButton.innerHTML = 'Allow';
+            okButton.onclick = function() {
+                var e = new window.CustomEvent('allowed');
+                div.className = 'hidden';
+                permitted = true;
+                e.data = {
+                    inputPorts: plugin.MidiInList(),
+                    outputPorts: plugin.MidiOutList()
+                };
+                dispatcher.dispatchEvent(e);
+            };
+            cancelButton.innerHTML = 'Cancel';
+            cancelButton.onclick = function() {
+                var e = new window.CustomEvent('denied');
+                e.data = 'SecurityError';
+                dispatcher.dispatchEvent(e);
+                div.className = 'hidden';
+                permitted = false;
+            };
+            div.innerHTML = markup;
+            div.appendChild(okButton);
+            div.appendChild(cancelButton);
+            div.className = 'hidden';
+            document.body.appendChild(div);
+            document.head.appendChild(style);
+            div.style.position = 'fixed';
+            setTimeout(function() {
+                div.className = 'show';
+            }, 100);
+            if (debug) {
+                setTimeout(function() {
+                    okButton.click();
+                }, 500);
+            }
+        }
+        /*
+        interface MIDIEvent : Event {
+            readonly attribute DOMHighResTimeStamp timestamp;
+            readonly attribute Uint8Array          data;
+            readonly attribute MIDIPort            port;
+        };
+        */
+        function MIDIEvent(timestamp, data, port) {
+            var e = new window.CustomEvent('message'),
+                interfaces = {
+                    timestamp: {
+                        get: function() {
+                            return timestamp;
+                        }
+                    },
+                    data: {
+                        get: function() {
+                            return data;
+                        }
+                    },
+                    port: {
+                        get: function() {
+                            return port;
+                        }
+                    }
+                };
+            Object.defineProperties(e, interfaces);
+            return e;
+        }
+        /*
+        interface MIDIPort : EventListener {
+        readonly attribute DOMString    id;
+        readonly attribute DOMString?   manufacturer;
+        readonly attribute DOMString?   name;
+        readonly attribute MIDIPortType type;
+        readonly attribute DOMString?   version;
+                 attribute EventHandler? onmessage;
+        }
+        */
+        function MIDIPort(name, type) {
+            var self = this,
+                dispatcher = (type === 'input') ? document.createElement('x-eventDispatcher') : null,
+                id = hash(name),
+                deviceName = String(name),
+                manufacturer = null,
+                version = null,
+                eventHandler = null,
+                messageCallback = (type === 'input') ? function(timestamp, data) {
+                    var e = new MIDIEvent(timestamp, data, self);
+                    dispatcher.dispatchEvent(e);
+                } : null,
+                interfaces = {
+                    id: {
+                        get: function() {
+                            return id;
+                        }
+                    },
+                    type: {
+                        get: function() {
+                            return type;
+                        }
+                    },
+                    version: {
+                        get: function() {
+                            return version;
+                        }
+                    },
+                    name: {
+                        get: function() {
+                            return deviceName;
+                        }
+                    },
+                    //EventListener - can't extend type so need to implement:(
+                    addEventListener: {
+                        value: function(type, listener, useCapture) {
+                            dispatcher.addEventListener(type, listener, useCapture);
+                        }
+                    },
+                    removeEventListener: {
+                        value: function(type, listener, useCapture) {
+                            dispatcher.removeEventListener(type, listener, useCapture);
+                        }
+                    },
+                    dispatchEvent: {
+                        value: function(evt) {
+                            dispatcher.dispatchEvent(evt);
+                        }
+                    },
+                    onmessage: {
+                        set: function(aFunction) {
+                            //clear prevously set event handler
+                            if (eventHandler !== null) {
+                                dispatcher.removeEventListener('message', eventHandler, false);
+                                eventHandler = null;
+                            }
+                            //check if callable
+                            if (aFunction.call && typeof aFunction.call === 'function') {
+                                dispatcher.addEventListener('message', aFunction, false);
+                                eventHandler = aFunction;
+                            }
+                            return eventHandler;
+                        },
+                        get: function() {
+                            return eventHandler;
+                        },
+                        enumerable: false,
+                        configurable: false
+                    },
+                    send: {
+                        value: function(data, timestamp) {
+                            return send(self, data, timestamp);
+                        }
+                    },
+                    toString: {
+                        value: function toString() {
+                            var info = {
+                                type: type,
+                                name: name,
+                                manufacturer: manufacturer,
+                                version: version,
+                                id: id
+                            };
+                            return JSON.stringify(info);
+                        }
+                    }
+                };
+            //djb2 hashing function
+            //http://erlycoder.com/49/javascript-hash-functions-to-convert-string-into-integer-hash-
+            function hash(str) {
+                var result = 5381;
+                for (var char, i = 0, l = name.length; i < str.length; i++) {
+                    char = str.charCodeAt(i);
+                    result = ((result << 5) + result) + char;
+                }
+                return String(result);
+            }
 
-    // Can't get manu/version from Jazz
-    this.name = port;
-    this.manufacturer = "<manufacturer unknown>";
-    this.version = "<version not supported>";
-    this.fingerprint = "" + index + "." + this.name;
-}
-
-MIDIPort.prototype.toString = function() {
-    return ("type: "+ this.type + "name: '" + this.name + "' manufacturer: '" + 
-    this.manufacturer + "' version: " + this.version + " fingerprint: '" + this.fingerprint + "'" );
-}
-
-function MIDIInput( midiAccess, target ) {
-  // target can be a MIDIPort or DOMString 
-  if ( target instanceof MIDIPort ) {
-    this._deviceName = target.name;
-    this._index = target._index;
-  } else if ( target.isString() ) { // fingerprint 
-    var dot = target.indexOf(".");
-    this._index = parseInt( target.slice( 0, dot ) );
-    this._deviceName = target.slice( dot + 1 );
-  } else { // target is numerical index
-    this._index = target;
-    var list=this.Jazz.MidiInList();
-    this._deviceName = list[target];
-  }
-
-  this.onmessage = null;
-  this._listeners = [];
-  this._midiAccess = midiAccess;
-
-  var inputInstance = null;
-  for (var i=0; (i<midiAccess._jazzInstances.length)&&(!inputInstance); i++) {
-    if (!midiAccess._jazzInstances[i].inputInUse)
-      inputInstance=midiAccess._jazzInstances[i];
-  }
-  if (!inputInstance) {
-    inputInstance = new _JazzInstance();
-    midiAccess._jazzInstances.push( inputInstance );
-  }
-  inputInstance.inputInUse = true;
-
-  this._jazzInstance = inputInstance._Jazz;
-  this._input = this._jazzInstance.MidiInOpen( this._index, _midiProc.bind(this) );
-}
-
-// Introduced in DOM Level 2:
-MIDIInput.prototype.addEventListener = function (type, listener, useCapture ) {
-  if (type != "message")
-    return;
-  for (var i=0; i<this._listeners.length; i++)
-    if (this._listeners[i] == listener)
-      return;
-  this._listeners.push( listener );
-}
-
-MIDIInput.prototype.removeEventListener = function (type, listener, useCapture ) {
-  if (type != "message")
-    return;
-  for (var i=0; i<this._listeners.length; i++)
-    if (this._listeners[i] == listener) {
-      this._listeners.splice( i, 1 );  //remove it
-      return;
+            function send(port, data, timestamp) {
+                var delayBeforeSend = (timestamp) ? Math.floor(timestamp - perf.now()) : 0;
+                if (port.type === 'input' || !(data) || data.length === 0) {
+                    return false;
+                }
+                if (timestamp && (delayBeforeSend > 1)) {
+                    window.setTimeout(send(port, data, timestamp), delayBeforeSend);
+                } else {
+                    midiIO.midiOutLong(data, self.name);
+                }
+                return true;
+            }
+            Object.defineProperties(this, interfaces);
+            if (type === 'input') {
+                midiIO.midiInOpen(name, messageCallback);
+            }
+        }
+        /*
+        interface MIDIAccess {
+            sequence<MIDIPort> getInputs();
+            sequence<MIDIPort> getOutputs();
+            MIDIPort           getPortById (DOMString id);
+        };
+        */
+        function MIDIAccess() {
+            var interfaces = {
+                getInputs: {
+                    value: function() {
+                        return midiIO.midiInList.slice(0);
+                    }
+                },
+                getOutputs: {
+                    value: function() {
+                        return midiIO.midiOutList.slice(0);
+                    }
+                },
+                getPortById: {
+                    value: function(id) {
+                        var ports = this.getInputs().concat(this.getOutputs);
+                        id = String(id);
+                        for (var i = 0, l = ports.length; i < l; i++) {
+                            if (ports[i].id === id) {
+                                return ports[i];
+                            }
+                        }
+                        return null;
+                    }
+                }
+            };
+            Object.defineProperties(this, interfaces);
+        }
+        Object.defineProperties(this, interfaces);
     }
-}
-
-MIDIInput.prototype.preventDefault = function() {
-  this._pvtDef = true;
-}
-
-MIDIInput.prototype.dispatchEvent = function (evt) {
-  this._pvtDef = false;
-
-  // dispatch to listeners
-  for (var i=0; i<this._listeners.length; i++)
-    if (this._listeners[i].handleEvent)
-      this._listeners[i].handleEvent( evt );
-    else
-      this._listeners[i]( evt );
-
-  if (this.onmessage)
-    this.onmessage( evt );
-
-  return this._pvtDef;
-}
-
-
-function _midiProc( timestamp, data ) {
-  var evt = new CustomEvent( "message" );
-  var t = timestamp - this._jazzInstance._jazzTimeZero;
-  evt.timestamp = parseFloat( timestamp.toString()) + this._jazzInstance._perfTimeZero;
-  evt.data = new Uint8Array(data);
-
-  this.dispatchEvent( evt );
-
-}
-
-function MIDIOutput( midiAccess, target ) {
-  // target can be a MIDIPort or DOMString 
-  if ( target instanceof MIDIPort ) {
-    this._deviceName = target.name;
-    this._index = target._index;
-  } else if ( target.isString() ) { // fingerprint 
-    var dot = target.indexOf(".");
-    this._index = parseInt( target.slice( 0, dot ) );
-    this._deviceName = target.slice( dot + 1 );
-  } else { // target is numerical index
-    this._index = target;
-    var list=this.Jazz.MidiOutList();
-    this._deviceName = list[target];
-  }
-
-  this._midiAccess = midiAccess;
-
-
-  var outputInstance = null;
-  for (var i=0; (i<midiAccess._jazzInstances.length)&&(!outputInstance); i++) {
-    if (!midiAccess._jazzInstances[i].outputInUse)
-      outputInstance=midiAccess._jazzInstances[i];
-  }
-  if (!outputInstance) {
-    outputInstance = new _JazzInstance();
-    midiAccess._jazzInstances.push( outputInstance );
-  }
-  outputInstance.outputInUse = true;
-
-  this._jazzInstance = outputInstance._Jazz;
-  this._jazzInstance.MidiOutOpen(this._deviceName);
-}
-
-function _sendLater() {
-    this.jazz.MidiOutLong( this.data );    // handle send as sysex
-}
-
-MIDIOutput.prototype.send = function( data, timestamp ) {
-  var delayBeforeSend = 0;
-  if (data.length==0)
-    return false;
-
-  if (timestamp)
-    delayBeforeSend = Math.floor( timestamp - window.performance.now() );
-
-  if (timestamp && (delayBeforeSend>1)) {
-    var sendObj = new Object;
-    sendObj.jazz = this._jazzInstance;
-    sendObj.data = data;
-
-    window.setTimeout( _sendLater.bind(sendObj), delayBeforeSend );
-  } else {
-    this._jazzInstance.MidiOutLong( data );
-  }
-  return true;
-}
-
-
+}(window, window.navigator, window.performance));

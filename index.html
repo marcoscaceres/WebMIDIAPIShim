@@ -8,7 +8,7 @@
 	<title>Web MIDI API Polyfill</title>
 	<style>
 #log {
-	height: 15em;
+	height: 10em;
 }
 </style>
 	</head>
@@ -60,7 +60,7 @@ function runTest() {
 	if (!log)
 		log = document.getElementById("log");
 	log.innerText = "Starting up MIDI...\n";
-	navigator.getMIDIAccess( success, failure );
+	navigator.requestMIDIAccess( success, failure );
 }
 
 function handleMIDIMessage( ev ) {
@@ -69,34 +69,33 @@ function handleMIDIMessage( ev ) {
 	if (ev.data.length == 3) 
 		log.innerText += " 0x" + ev.data[0].toString(16) + " 0x" + ev.data[1].toString(16) + " 0x" + ev.data[2].toString(16);
 	log.innerText += "\n";
-	if (output)
+	if (output){
 		output.send( ev.data );
+	}
 }
 
 function success( midiAccess ) {
 	log.innerText += "MIDI ready!\n";
 	midi = midiAccess;
 
-	inputs = midi.enumerateInputs();
+	inputs = midi.getInputs();
 	log.innerText += inputs.length+" inputs:\n";
 	for (var i=0;i<inputs.length;i++)
 		log.innerText += i + ": " + inputs[i] + "\n";
 
 	if (inputs.length>0) {
-		input = midi.getInput( inputs[0] );
-//		input.onmessage = handleMIDIMessage;
+		input = inputs[0];
 		input.addEventListener("message", handleMIDIMessage);
 		log.innerText += "Hooked up first input.\n";
 	}
 
-	outputs = midi.enumerateOutputs();
+	outputs = midi.getOutputs();
 	log.innerText += outputs.length+" outputs:\n";
 	for (var i=0;i<outputs.length;i++)
 		log.innerText += i + ": " + outputs[i] + "\n";
 
 	if (outputs.length) {
-		output = midi.getOutput( outputs[0] );
-		output.send( [0xb0, 0x00, 0x7f] );	// If the first device is a Novation Launchpad, this will light it up!
+		output = outputs[0];
 	}
 }
 
