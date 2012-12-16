@@ -22,13 +22,8 @@
         value: requestMIDIAccess
     });
 
-    if(window.document.readyState === "complete"){
-        midiIO = new JazzPlugin();
-    }else{
-        window.addEventListener("DOMContentLoaded", function(){
-            midiIO = new JazzPlugin();
-        }, false);
-    }    
+    midiIO = new JazzPlugin();
+         
     /*
     creates instances of the Jazz plugin (http://jazz-soft.net/)
     The plugin exposes the following methods (v1.2):
