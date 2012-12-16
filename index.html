@@ -62,6 +62,10 @@
 	    log=document.getElementById("log"),
 	    record= [];
 
+	if(!(window.console)){
+		window.console = {log: function(msg){ alert(msg);}}
+	}
+
 	document.querySelector("#enable").onclick = function enable() {
 		log.innerHTML = "Starting up MIDI...\n";
 		navigator.requestMIDIAccess( success, failure );

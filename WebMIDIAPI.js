@@ -2,7 +2,7 @@
 (function (global, exports, perf) {
     'use strict';
     var midiIO,
-        debug = true;
+        debug = false;
     if (debug) {
         window.console.warn('Debuggin enabled');
     }
