@@ -113,24 +113,19 @@
         //loads the Jazz plugin by creating an <object>
         function loadPlugin() {
             var elemId = '_Jazz' + Math.random(),
-                objElem = document.createElement('object'),
-                fallbackObj = objElem.cloneNode(false);
-            objElem.id = elemId + 'ie';
-            objElem.classid = 'CLSID:1ACE1618-1C7D-4561-AEE1-34842AA85E90';
-            fallbackObj.id = elemId;
-            fallbackObj.type = 'audio/x-jazz';
-            objElem.appendChild(fallbackObj);
+                objElem = document.createElement('object');
+            objElem.id = elemId;
+            objElem.type = 'audio/x-jazz';
             document.documentElement.appendChild(objElem);
-            plugin = (fallbackObj.isJazz === true) ? fallbackObj : objElem;
-            if (!plugin instanceof window.HTMLObjectElement || !(plugin.isJazz)) {
+            if (!(objElem.isJazz)) {
                 var e = new window.CustomEvent('error');
                 e.data = new Error('NotSupportedError');
                 dispatcher.dispatchEvent(e);
                 return null;
             }
             //Initialize
-            plugin.MidiOut(0x80, 0, 0);
-            return plugin;
+            objElem.MidiOut(0x80, 0, 0);
+            return objElem;
         }
 
         function requestPermission(plugin) {
