@@ -2,10 +2,11 @@
 (function (global, exports, perf) {
     'use strict';
     var midiIO,
-        debug = false;
+    debug = false;
     if (debug) {
         window.console.warn('Debuggin enabled');
     }
+
     function requestMIDIAccess(successCallback, errorCallback) {
         function accessGranted(accessor) {
             successCallback(accessor);
@@ -23,7 +24,7 @@
     });
 
     midiIO = new JazzPlugin();
-         
+
     /*
     creates instances of the Jazz plugin (http://jazz-soft.net/)
     The plugin exposes the following methods (v1.2):
@@ -115,10 +116,8 @@
             var elemId = '_Jazz' + Math.random(),
                 objElem = document.createElement('object');
             objElem.id = elemId;
-            try{
-                objElem.type = 'audio/x-jazz';
-                document.documentElement.appendChild(objElem);
-            }catch(e){}
+            objElem.type = 'audio/x-jazz';
+            document.documentElement.appendChild(objElem);
             if (!(objElem.isJazz)) {
                 var e = new window.CustomEvent('error');
                 e.data = new Error('NotSupportedError');
@@ -138,7 +137,7 @@
                 id = 'dialog_' + (Math.round(Math.random() * 1000000) + 10000),
                 markup = '',
                 css = '';
-            if(!(plugin)){
+            if (!(plugin)) {
                 throw "Jazz plugin was not Initialized. Did you install it?";
             }
             css += '#' + id + '{ ' + 'width: 60%; ' + 'box-shadow: 0px 2px 20px black; z-index: 1000;' + ' left: 20%; background-color: #aaa;' + ' padding: 3em;' + '} ' + '.hidden{ top: -' + Math.round(window.innerHeight) + 'px; -webkit-transition: all .2s ease-in;}' + '.show{top: 0px; -webkit-transition: all .2s ease-out;}';
@@ -324,13 +323,13 @@
                     return false;
                 }
 
-                delay = (timestamp)? Math.floor(timestamp - window.performance.now()): 0;
-                
-                if(delay > 0){
+                delay = (timestamp) ? Math.floor(timestamp - window.performance.now()) : 0;
+
+                if (delay > 0) {
                     window.setTimeout(function () {
                         send(port, data);
                     }, delay);
-                }else{
+                } else {
                     midiIO.midiOutLong(data, self.name);
                 }
                 return true;
@@ -384,37 +383,58 @@
     }
 }(window, window.navigator, window.performance));
 
-//pollyfill now() 
-(function () {
-    //worst case, we use Date.now()
-    var prefix = "moz,webkit,opera,ms".split(","),
-        perf = {}, 
-        props = {
-            value: function (start) {
-                return function () {
-                    return Date.now() - start;
-                }
-            }(Date.now())
-        };
-    
-    if (window.performance && !(window.performance.now)) {
-        for (var i = prefix.length; i >= 0; i--) {
-            if (window.performance[prefix[i] + "Now"]) {
-                props.value = function () {
-                    return window.performance[prefix[i] + "Now"]();
-                }
-                break;
+//pollyfill window.performance.now() 
+(function (exports) {
+    var perf = {},
+        props;
+
+    function findAlt() {
+        var prefix = "moz,webkit,opera,ms".split(","),
+            i = prefix.length,
+            //worst case, we use Date.now()
+            props = { 
+                value: function (start) {
+                    return function () {
+                        return Date.now() - start;
+                    }
+                }(Date.now())
+            };
+
+        //seach for vendor prefixed version  
+        for (; i >= 0; i--) {
+            if ((prefix[i] + "Now") in exports.performance) {
+                props.value = function (method) {
+                    return function () {
+                        exports.performance[method]();
+                    }
+                }(prefix[i] + "Now");
+                return props;
             }
-            //otherwise, use connectionStart 
-            if ( !! (window.performance.timing.connectStart)) {
-                //this pretty much approximates performance.now() to the millisecond
-                props.value = function () {
-                    return Date.now() - window.performance.timing.connectStart;
-                }
-            }
-        }  
-    }else if(!(window.performance)){
-        Object.defineProperty(window, "performance", {get: function(){return perf;}}); 
+        }
+
+        //otherwise, try to use connectionStart 
+        if ("timing" in exports.performance &&
+            "connectStart" in exports.performance.timing) {
+            //this pretty much approximates performance.now() to the millisecond
+            props.value = function (start) {
+                return function(){Date.now() - start;}
+            }(exports.performance.timing.connectStart);
+        }
+        return props;
     }
-    Object.defineProperty(window.performance, "now", props);
-}());
+
+    //if already defined, bail    
+    if (("performance" in exports) && ("now" in exports.performance)) {
+        return;
+    }
+    if (!("performance" in exports)) {
+        Object.defineProperty(exports, "performance", {
+            get: function () {
+                return perf;
+            }
+        });
+        //otherwise, perforance is there, but not "now()"    
+    } 
+    props = findAlt(); 
+    Object.defineProperty(exports.performance, "now", props);
+}(window));

@@ -74,17 +74,17 @@
 	document.querySelector("#playRandomSound").onclick = function playRandomSound(){
 		var rand = Math.floor(Math.random() * 127);
 		//Chan 1 Program Change (random sound)
-		send([0xC0,rand,0]);
+		play([0xC0,rand,0]);
 		//Chan 1 Note on, note, velocity
-	    send([0x90,60,0x7f]);
+	    play([0x90,60,0x7f]);
 	    //Chan 1 Note off
-	   	send([0x80,60,0], performance.now() + 500);
+	   	play([0x80,60,0], performance.now() + 500);
 	}; 
 
 	document.querySelector("#playRandomNote").onclick = function playRandomNote(){
 		var rand = Math.floor(Math.random() * 128);
-		send([0x90, rand, 0x5f]);
-		send([0x90, rand, 0x0], performance.now() + 500);
+		play([0x90, rand, 0x5f]);
+		play([0x90, rand, 0x0], performance.now() + 500);
 	};
 
 	document.querySelector("#replay").onclick = function replay(){
@@ -93,7 +93,7 @@
 		}
 		var start = window.performance.now() - record[0].stamp; 
 		record.forEach(function(packet){
-			send(packet.data, packet.stamp + start);
+			output.send(packet.data, packet.stamp + start);
 		})
 	};
 	
@@ -102,7 +102,7 @@
 		output.send([0x80, 0, 0]);
 	}
 
-	function send(array,timestamp){
+	function play(array,timestamp){
 		var html = "Sending:"
 			packet = null; 
 		if(!(output)){
