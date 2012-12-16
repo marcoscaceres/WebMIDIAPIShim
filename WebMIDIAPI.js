@@ -2,7 +2,7 @@
 (function (global, exports, perf) {
     'use strict';
     var midiIO,
-        debug = false;
+        debug = true;
     if (debug) {
         window.console.warn('Debuggin enabled');
     }
@@ -18,10 +18,17 @@
     if ('getMIDIAccess' in exports) {
         return; // namespace is taken already, bail!
     }
-    midiIO = new JazzPlugin();
     Object.defineProperty(exports, 'requestMIDIAccess', {
         value: requestMIDIAccess
     });
+
+    if(window.document.readyState === "complete"){
+        midiIO = new JazzPlugin();
+    }else{
+        window.addEventListener("DOMContentLoaded", function(){
+            midiIO = new JazzPlugin();
+        }, false);
+    }    
     /*
     creates instances of the Jazz plugin (http://jazz-soft.net/)
     The plugin exposes the following methods (v1.2):
@@ -110,10 +117,9 @@
         }
         //loads the Jazz plugin by creating an <object>
         function loadPlugin() {
-            var plugin,
-                elemId = '_Jazz' + Math.random(),
+            var elemId = '_Jazz' + Math.random(),
                 objElem = document.createElement('object'),
-                fallbackObj = objElem.cloneNode();
+                fallbackObj = objElem.cloneNode(false);
             objElem.id = elemId + 'ie';
             objElem.classid = 'CLSID:1ACE1618-1C7D-4561-AEE1-34842AA85E90';
             fallbackObj.id = elemId;
@@ -292,8 +298,8 @@
                         configurable: false
                     },
                     send: {
-                        value: function (data, delay) {
-                            return send(self, data, delay);
+                        value: function (data, timestamp) {
+                            return send(self, data, timestamp);
                         }
                     },
                     toJSON: {
@@ -320,15 +326,19 @@
                 return String(result);
             }
 
-            function send(port, data, delay) {
-                if (port.type === 'input' || !(data) || data.length === 0) {
+            function send(port, data, timestamp) {
+                var delay;
+                if (port.type === 'input' || !(data.length) || data.length === 0) {
                     return false;
                 }
-                if (delay && delay > 0) {
+
+                delay = (timestamp)? Math.floor(timestamp - window.performance.now()): 0;
+                
+                if(delay > 0){
                     window.setTimeout(function () {
                         send(port, data);
                     }, delay);
-                } else {
+                }else{
                     midiIO.midiOutLong(data, self.name);
                 }
                 return true;
@@ -386,6 +396,7 @@
 (function () {
     //worst case, we use Date.now()
     var prefix = "moz,webkit,opera,ms".split(","),
+        perf = {}, 
         props = {
             value: function (start) {
                 return function () {
@@ -393,6 +404,7 @@
                 }
             }(Date.now())
         };
+    
     if (window.performance && !(window.performance.now)) {
         for (var i = prefix.length; i >= 0; i--) {
             if (window.performance[prefix[i] + "Now"]) {
@@ -408,7 +420,9 @@
                     return Date.now() - window.performance.timing.connectStart;
                 }
             }
-        }
-        Object.defineProperty(window.performance, "now", props);
+        }  
+    }else if(!(window.performance)){
+        Object.defineProperty(window, "performance", {get: function(){return perf;}}); 
     }
+    Object.defineProperty(window.performance, "now", props);
 }());
