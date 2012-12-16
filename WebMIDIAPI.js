@@ -115,8 +115,10 @@
             var elemId = '_Jazz' + Math.random(),
                 objElem = document.createElement('object');
             objElem.id = elemId;
-            objElem.type = 'audio/x-jazz';
-            document.documentElement.appendChild(objElem);
+            try{
+                objElem.type = 'audio/x-jazz';
+                document.documentElement.appendChild(objElem);
+            }catch(e){}
             if (!(objElem.isJazz)) {
                 var e = new window.CustomEvent('error');
                 e.data = new Error('NotSupportedError');
