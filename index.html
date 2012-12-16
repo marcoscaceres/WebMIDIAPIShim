@@ -34,8 +34,11 @@
     <h3>Test it out!</h3>
     <p><strong>Before you press the button:</strong> install the <a href="http://jazz-soft.net/">Jazz-Soft.net's Jazz-Plugin</a> to enable MIDI support on Windows and OSX.</p>
     <p>On MacOS, you will also need a real synthesizer or something like <a href="http://www.manyetas.com/creed/midikeys.html">MidiKeys</a>. </p>
-    <button onclick="runTest();">Test MIDI!</button>
-    <button onclick="replay();">Replay data</button>
+    1. <button id="enable">Enable MIDI!</button> ⇰ 
+    2. <button id="playRandomSound" disabled>Random sound</button> ⇰
+    3. <button id="playRandomNote" disabled>Play random notes</button> ⇰
+    4. <button id="replay" disabled>Replay data</button> ⇰
+    5. <button id="clearData" disabled>Clear data</button>
     <pre id="log">
 	</pre>
     <div id="MIDIPlugin" style="position:absolute; visibility:hidden"></div>
@@ -50,67 +53,121 @@
     </div>
 <script src="WebMIDIAPI.js"></script> 
 <script>
-var midi=
-    inputs=
-    outputs=
-    input=
-    output=
-    log=null,
-    record= [];
+(function(){
+	var midi=
+	    inputs=
+	    outputs=
+	    input=
+	    output= null,
+	    log=document.getElementById("log"),
+	    record= [];
 
-function replay(){
-	record.forEach(function(packet){
-		output.send(packet.data, packet.stamp);
-	})
-}
+	document.querySelector("#enable").onclick = function enable() {
+		log.innerHTML = "Starting up MIDI...\n";
+		navigator.requestMIDIAccess( success, failure );
+	}; 
 
-function runTest() {
-	if (!log)
-		log = document.getElementById("log");
-	log.innerText = "Starting up MIDI...\n";
-	navigator.requestMIDIAccess( success, failure );
-}
+	document.querySelector("#playRandomSound").onclick = function playRandomSound(){
+		var rand = Math.floor(Math.random() * 127);
+		//Chan 1 Program Change (random sound)
+		send([0xC0,rand,0]);
+		//Chan 1 Note on, note, velocity
+	    send([0x90,60,0x7f]);
+	    //Chan 1 Note off
+	   	send([0x80,60,0], performance.now() + 500);
+	}; 
 
-function handleMIDIMessage( ev ) {
-	// testing - just reflect.
-	log.innerText += "Message: " + ev.data.length + " bytes, timestamp: " + ev.timestamp;
-	if (ev.data.length == 3) 
-		log.innerText += " 0x" + ev.data[0].toString(16) + " 0x" + ev.data[1].toString(16) + " 0x" + ev.data[2].toString(16);
-	log.innerText += "\n";
-	if (output){
-		output.send( ev.data );
-	}
-	record.push({data: ev.data, stamp: ev.timestamp}); 
-}
+	document.querySelector("#playRandomNote").onclick = function playRandomNote(){
+		var rand = Math.floor(Math.random() * 128);
+		send([0x90, rand, 0x5f]);
+		send([0x90, rand, 0x0], performance.now() + 500);
+	};
 
-function success( midiAccess ) {
-	log.innerText += "MIDI ready!\n";
-	midi = midiAccess;
-
-	inputs = midi.getInputs();
-	log.innerText += inputs.length+" inputs:\n";
-	for (var i=0;i<inputs.length;i++)
-		log.innerText += i + ": " + inputs[i] + "\n";
-
-	if (inputs.length>0) {
-		input = inputs[0];
-		input.addEventListener("message", handleMIDIMessage);
-		log.innerText += "Hooked up first input.\n";
+	document.querySelector("#replay").onclick = function replay(){
+		if(record.length === 0){
+			return;
+		}
+		var start = window.performance.now() - record[0].stamp; 
+		record.forEach(function(packet){
+			send(packet.data, packet.stamp + start);
+		})
+	};
+	
+	document.querySelector("#clearData").onclick = function clearData(){
+		record = [];
+		output.send([0x80, 0, 0]);
 	}
 
-	outputs = midi.getOutputs();
-	log.innerText += outputs.length+" outputs:\n";
-	for (var i=0;i<outputs.length;i++)
-		log.innerText += i + ": " + outputs[i] + "\n";
-
-	if (outputs.length) {
-		output = outputs[0];
+	function send(array,timestamp){
+		var html = "Sending:"
+			packet = null; 
+		if(!(output)){
+			return;
+		}
+		packet = {data: array, stamp: timestamp || performance.now()}; 
+		record.push(packet);
+		output.send(array, timestamp)
+		for(var i = 0, l= array.length; i < l; i++){
+			html += " 0x" + array[i].toString(16);
+		}
+	
+		log.innerHTML += (html + " timestamp:" + packet.stamp + "\n"); 
+		log.scrollTop = log.scrollHeight;
 	}
-}
 
-function failure( error ) {
-	console.log( error.message );
-}
+	function handleMIDIMessage( ev ) {
+		// testing - just reflect.
+		log.innerHTML += "Message: " + ev.data.length + " bytes, timestamp: " + ev.timestamp;
+		if (ev.data.length == 3){
+			log.innerHTML += " 0x" + ev.data[0].toString(16) + " 0x" + ev.data[1].toString(16) + " 0x" + ev.data[2].toString(16);
+		}
+		log.innerHTML += "\n";
+		if (output){
+			send( ev.data );
+		}
+		
+	}
+
+	function success( midiAccess ) {
+		log.innerHTML += "MIDI ready!\n";
+		midi = midiAccess;
+
+		inputs = midi.getInputs();
+		log.innerHTML += inputs.length+" inputs:\n";
+		
+		if (inputs.length>0) {
+			for (var i=0, l = inputs.length; i<l ;i++){
+				log.innerHTML += i + ": " + inputs[i].name + "\n";
+			}
+			input = inputs[0];
+			input.addEventListener("message", handleMIDIMessage);
+			log.innerHTML += "Listening to: " + input.name + " \n";
+		} 
+
+		outputs = midi.getOutputs();
+		log.innerHTML += outputs.length+" outputs:\n";
+		for (var i=0;i<outputs.length;i++){
+			log.innerHTML += i + ": " + outputs[i].name + "\n";
+		}
+		if (outputs.length) {
+			output = outputs[0];
+		}
+		//reset
+		output.send([0x80, 0, 0]);
+		enableFunctionality();
+	}
+
+	function enableFunctionality(){
+		buttons = document.querySelectorAll("button");
+		for(var button, i = buttons.length -1 ; i >= 0; i--){
+			buttons[i].disabled = false;
+		}
+	}
+
+	function failure( error ) {
+		console.log( error.message );
+	}
+}());
 </script>
 </body>
 </html>
