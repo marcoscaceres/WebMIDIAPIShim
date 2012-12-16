@@ -35,6 +35,7 @@
     <p><strong>Before you press the button:</strong> install the <a href="http://jazz-soft.net/">Jazz-Soft.net's Jazz-Plugin</a> to enable MIDI support on Windows and OSX.</p>
     <p>On MacOS, you will also need a real synthesizer or something like <a href="http://www.manyetas.com/creed/midikeys.html">MidiKeys</a>. </p>
     <button onclick="runTest();">Test MIDI!</button>
+    <button onclick="replay();">Replay data</button>
     <pre id="log">
 	</pre>
     <div id="MIDIPlugin" style="position:absolute; visibility:hidden"></div>
@@ -49,12 +50,19 @@
     </div>
 <script src="WebMIDIAPI.js"></script> 
 <script>
-var midi=null;
-var inputs=null;
-var outputs=null;
-var input=null;
-var output=null;
-var log=null;
+var midi=
+    inputs=
+    outputs=
+    input=
+    output=
+    log=null,
+    record= [];
+
+function replay(){
+	record.forEach(function(packet){
+		output.send(packet.data, packet.stamp);
+	})
+}
 
 function runTest() {
 	if (!log)
@@ -72,6 +80,7 @@ function handleMIDIMessage( ev ) {
 	if (output){
 		output.send( ev.data );
 	}
+	record.push({data: ev.data, stamp: ev.timestamp}); 
 }
 
 function success( midiAccess ) {

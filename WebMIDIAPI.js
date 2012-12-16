@@ -72,7 +72,6 @@
                 midiOutLong: {
                     value: function (data, name) {
                         if (plugin.MidiOutOpen(name) === name) {
-                            //plugin.MidiOut(0x90,60,100);
                             plugin.MidiOutLong(data);
                         }
                     }
@@ -232,7 +231,7 @@
                 version = null,
                 eventHandler = null,
                 messageCallback = (type === 'input') ? function (timestamp, data) {
-                    var e = new MIDIEvent(timestamp, data, self);
+                    var e = new MIDIEvent(perf.now(), data, self);
                     dispatcher.dispatchEvent(e);
                 } : null,
                 interfaces = {
@@ -382,3 +381,34 @@
         Object.defineProperties(this, interfaces);
     }
 }(window, window.navigator, window.performance));
+
+//pollyfill now() 
+(function () {
+    //worst case, we use Date.now()
+    var prefix = "moz,webkit,opera,ms".split(","),
+        props = {
+            value: function (start) {
+                return function () {
+                    return Date.now() - start;
+                }
+            }(Date.now())
+        };
+    if (window.performance && !(window.performance.now)) {
+        for (var i = prefix.length; i >= 0; i--) {
+            if (window.performance[prefix[i] + "Now"]) {
+                props.value = function () {
+                    return window.performance[prefix[i] + "Now"]();
+                }
+                break;
+            }
+            //otherwise, use connectionStart 
+            if ( !! (window.performance.timing.connectStart)) {
+                //this pretty much approximates performance.now() to the millisecond
+                props.value = function () {
+                    return Date.now() - window.performance.timing.connectStart;
+                }
+            }
+        }
+        Object.defineProperty(window.performance, "now", props);
+    }
+}());
