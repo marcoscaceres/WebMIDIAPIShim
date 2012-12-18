@@ -138,7 +138,7 @@
                 markup = '',
                 css = '';
             if (!(plugin)) {
-                throw "Jazz plugin was not Initialized. Did you install it?";
+                throw 'Jazz plugin was not Initialized. Did you install it?';
             }
             css += '#' + id + '{ ' + 'width: 60%; ' + 'box-shadow: 0px 2px 20px black; z-index: 1000;' + ' left: 20%; background-color: #aaa;' + ' padding: 3em;' + '} ' + '.hidden{ top: -' + Math.round(window.innerHeight) + 'px; -webkit-transition: all .2s ease-in;}' + '.show{top: 0px; -webkit-transition: all .2s ease-out;}';
             style.innerHTML = css;
@@ -181,17 +181,18 @@
         }
         /*
         interface MIDIEvent : Event {
-            readonly attribute DOMHighResTimeStamp timestamp;
+            readonly attribute DOMHighResTimeStamp receivedTime;
             readonly attribute Uint8Array          data;
             readonly attribute MIDIPort            port;
         };
         */
-        function MIDIEvent(timestamp, data, port) {
+        function MIDIEvent(data, port) {
             var e = new window.CustomEvent('message'),
+                receivedTime = perf.now(),
                 interfaces = {
-                    timestamp: {
+                    timeStamp: {
                         get: function () {
-                            return timestamp;
+                            return receivedTime;
                         }
                     },
                     data: {
@@ -228,7 +229,7 @@
                 version = null,
                 eventHandler = null,
                 messageCallback = (type === 'input') ? function (timestamp, data) {
-                    var e = new MIDIEvent(perf.now(), data, self);
+                    var e = new MIDIEvent(data, self);
                     dispatcher.dispatchEvent(e);
                 } : null,
                 interfaces = {
@@ -383,58 +384,69 @@
     }
 }(window, window.navigator, window.performance));
 
-//pollyfill window.performance.now() 
-(function (exports) {
+/*jshint forin:true, noarg:true, noempty:true, eqeqeq:true, bitwise:false, strict:true, undef:true, unused:true, curly:true, browser:true, indent:4, maxerr:50 */
+/*
+ * performance.now()
+ * Polyfill of: http://www.w3.org/TR/hr-time/
+ *
+ * Copyright (c) 2012 Marcos Caceres
+ * Licensed under the MIT license.
+ */
+(function(exports) {
+    'use strict';
     var perf = {},
         props;
 
-    function findAlt() {
-        var prefix = "moz,webkit,opera,ms".split(","),
+    function findNowMethod() {
+        var prefix = 'moz,webkit,opera,ms'.split(','),
             i = prefix.length,
             //worst case, we use Date.now()
-            props = { 
-                value: function (start) {
-                    return function () {
-                        return Date.now() - start;
-                    }
-                }(Date.now())
+            props = {
+                value: timecall(Date.now())
             };
 
-        //seach for vendor prefixed version  
-        for (; i >= 0; i--) {
-            if ((prefix[i] + "Now") in exports.performance) {
-                props.value = function (method) {
-                    return function () {
-                        exports.performance[method]();
-                    }
-                }(prefix[i] + "Now");
+        function timecall(start) {
+            return function() {
+                return Date.now() - start;
+            };
+        }
+        function methodCall(method) {
+            return function() {
+                exports.performance[method]();
+            };
+        }
+
+        //seach for vendor prefixed version
+        for (var method; i >= 0; i--) {
+            if ((prefix[i] + 'Now') in exports.performance) {
+                method = prefix[i] + 'Now';
+                props.value = methodCall(method);
                 return props;
             }
         }
 
-        //otherwise, try to use connectionStart 
-        if ("timing" in exports.performance &&
-            "connectStart" in exports.performance.timing) {
+        //otherwise, try to use connectionStart
+        if ('timing' in exports.performance &&
+            'connectStart' in exports.performance.timing) {
             //this pretty much approximates performance.now() to the millisecond
-            props.value = function (start) {
-                return function(){Date.now() - start;}
-            }(exports.performance.timing.connectStart);
+            props.value = timecall(exports.performance.timing.connectStart);
         }
         return props;
     }
 
-    //if already defined, bail    
-    if (("performance" in exports) && ("now" in exports.performance)) {
+    //if already defined, bail
+    if (('performance' in exports) && ('now' in exports.performance)) {
         return;
     }
-    if (!("performance" in exports)) {
-        Object.defineProperty(exports, "performance", {
+    //If we have no 'performance' at all, create it
+    if (!('performance' in exports)) {
+        Object.defineProperty(exports, 'performance', {
             get: function () {
                 return perf;
             }
         });
-        //otherwise, perforance is there, but not "now()"    
-    } 
-    props = findAlt(); 
-    Object.defineProperty(exports.performance, "now", props);
-}(window));
+    }
+    props = findNowMethod();
+    Object.defineProperty(exports.performance, 'now', props);
+
+}(typeof exports === 'object' && exports || this));

@@ -53,11 +53,9 @@
     </div>
 <script src="WebMIDIAPI.js"></script> 
 <script>
-(function(){
-	var midi=
-	    inputs=
-	    outputs=
-	    input=
+(function(exports){
+	var midi = 
+		input=
 	    output= null,
 	    log=document.getElementById("log"),
 	    record= [];
@@ -133,13 +131,13 @@
 	}
 
 	function success( midiAccess ) {
+		var outputs = midiAccess.getOutputs();
+		var inputs = midiAccess.getInputs();
+		exports.midi = midi = midiAccess;
 		log.innerHTML += "MIDI ready!\n";
-		midi = midiAccess;
-
-		inputs = midi.getInputs();
-		log.innerHTML += inputs.length+" inputs:\n";
-		
+		log.innerHTML += inputs.length+" inputs.\n";
 		if (inputs.length>0) {
+			
 			for (var i=0, l = inputs.length; i<l ;i++){
 				log.innerHTML += i + ": " + inputs[i].name + "\n";
 			}
@@ -147,8 +145,7 @@
 			input.addEventListener("message", handleMIDIMessage);
 			log.innerHTML += "Listening to: " + input.name + " \n";
 		} 
-
-		outputs = midi.getOutputs();
+		
 		log.innerHTML += outputs.length+" outputs:\n";
 		for (var i=0;i<outputs.length;i++){
 			log.innerHTML += i + ": " + outputs[i].name + "\n";
@@ -171,7 +168,7 @@
 	function failure( error ) {
 		console.log( error.message );
 	}
-}());
+}(window));
 </script>
 </body>
 </html>
