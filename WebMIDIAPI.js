@@ -294,6 +294,7 @@
                             return send(self, data, timestamp);
                         }
                     },
+                    //non standard
                     toJSON: {
                         value: function toJSON() {
                             var info = {
@@ -392,7 +393,7 @@
  * Copyright (c) 2012 Marcos Caceres
  * Licensed under the MIT license.
  */
-(function(exports) {
+(function (exports) {
     'use strict';
     var perf = {},
         props;
@@ -406,12 +407,12 @@
             };
 
         function timecall(start) {
-            return function() {
+            return function () {
                 return Date.now() - start;
             };
         }
         function methodCall(method) {
-            return function() {
+            return function () {
                 exports.performance[method]();
             };
         }
