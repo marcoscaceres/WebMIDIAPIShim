@@ -1,8 +1,16 @@
 /*jshint forin:true, noarg:true, noempty:true, eqeqeq:true, bitwise:false, strict:true, undef:true, unused:true, curly:true, browser:true, indent:4, maxerr:50 */
+/*
+ * Web MIDI API - Prollyfill
+ * https://dvcs.w3.org/hg/audio/raw-file/tip/midi/specification.html
+ *
+ * Copyright (c) 2012 Marcos Caceres
+ * Licensed under the MIT license.
+ */
 (function (global, exports, perf) {
     'use strict';
-    var midiIO,
-    debug = false;
+    var midiIO = null,
+        debug = false;
+
     if (debug) {
         window.console.warn('Debuggin enabled');
     }
@@ -11,19 +19,30 @@
         function accessGranted(accessor) {
             successCallback(accessor);
         }
+
+        //WebIDL 4.2.21. Callback function types
         if (typeof successCallback !== 'function') {
-            throw new TypeError('expected function');
+            throw new TypeError();
         }
-        midiIO.requestAccess(accessGranted, errorCallback);
+        if (errorCallback && typeof errorCallback !== 'function') {
+            throw new TypeError();
+        }
+
+        if(midiIO === null){
+            setTimeout(function(){
+                    midiIO = new JazzPlugin();
+                    midiIO.requestAccess(accessGranted, errorCallback);
+                }, 0); 
+
+        }
+        
     }
-    if ('getMIDIAccess' in exports) {
+    if ('requestMIDIAccess' in exports) {
         return; // namespace is taken already, bail!
     }
     Object.defineProperty(exports, 'requestMIDIAccess', {
         value: requestMIDIAccess
     });
-
-    midiIO = new JazzPlugin();
 
     /*
     creates instances of the Jazz plugin (http://jazz-soft.net/)
@@ -186,6 +205,13 @@
             readonly attribute MIDIPort            port;
         };
         */
+        
+        //Define the interface in conformance to 4.4 of WebIDL
+        function implementInterface(name){
+            var props = {writable: true, enumerable: false, configurable: true };
+            Object.defineProperty(global, name, props)
+        }   
+
         function MIDIEvent(data, port) {
             var e = new window.CustomEvent('message'),
                 receivedTime = perf.now(),
@@ -229,7 +255,7 @@
                 version = null,
                 eventHandler = null,
                 messageCallback = (type === 'input') ? function (timestamp, data) {
-                    var e = new MIDIEvent(data, self);
+                    var e = new MIDIEvent(new Uint8Array(data), self);
                     dispatcher.dispatchEvent(e);
                 } : null,
                 interfaces = {
