@@ -119,7 +119,7 @@
 
 	function handleMIDIMessage( ev ) {
 		// testing - just reflect.
-		log.innerHTML += "Message: " + ev.data.length + " bytes, timestamp: " + ev.timestamp;
+		log.innerHTML += "Message: " + ev.data.length + " bytes, timestamp: " + ev.receivedTime;
 		if (ev.data.length == 3){
 			log.innerHTML += " 0x" + ev.data[0].toString(16) + " 0x" + ev.data[1].toString(16) + " 0x" + ev.data[2].toString(16);
 		}

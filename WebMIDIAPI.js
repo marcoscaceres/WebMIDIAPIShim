@@ -205,7 +205,6 @@
             readonly attribute MIDIPort            port;
         };
         */
-        
         //Define the interface in conformance to 4.4 of WebIDL
         function implementInterface(name){
             var props = {writable: true, enumerable: false, configurable: true };
@@ -216,7 +215,7 @@
             var e = new window.CustomEvent('message'),
                 receivedTime = perf.now(),
                 interfaces = {
-                    timeStamp: {
+                    receivedTime: {
                         get: function () {
                             return receivedTime;
                         }
