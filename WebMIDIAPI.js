@@ -431,7 +431,8 @@
 
             function send(port, data, timestamp) {
                 var delay;
-                if (port.type === 'input' || !(data.length) || data.length === 0) {
+                data = new Uint8Array(data);
+                if (port.type === 'input' || data.length === 0) {
                     return false;
                 }
 
