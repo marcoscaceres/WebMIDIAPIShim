@@ -5,11 +5,14 @@
  *
  * Copyright (c) 2012 Marcos Caceres
  * Licensed under the MIT license.
- */
-(function (exports) {
+ */ 
+ (function (exports) {
     'use strict';
-    var perf = {},
-        props;
+    var perf = {};
+    //if already defined, bail
+    if (('performance' in exports) && ('now' in exports.performance)) {
+        return;
+    }
 
     function findNowMethod() {
         var prefix = 'moz,webkit,opera,ms'.split(','),
@@ -24,6 +27,7 @@
                 return Date.now() - start;
             };
         }
+
         function methodCall(method) {
             return function () {
                 return exports.performance[method]();
@@ -48,10 +52,6 @@
         return props;
     }
 
-    //if already defined, bail
-    if (('performance' in exports) && ('now' in exports.performance)) {
-        return;
-    }
     //If we have no 'performance' at all, create it
     if (!('performance' in exports)) {
         Object.defineProperty(exports, 'performance', {
@@ -60,9 +60,7 @@
             }
         });
     }
-    props = findNowMethod();
-    Object.defineProperty(exports.performance, 'now', props);
-
+    Object.defineProperty(exports.performance, 'now', findNowMethod());
 }(typeof exports === 'object' && exports || this));
 
 
@@ -73,11 +71,10 @@
  *
  * Copyright (c) 2012 Marcos Caceres
  * Licensed under the MIT license.
- */
-(function (global, exports, perf) {
+ */ (function (global, exports, perf) {
     'use strict';
     var midiIO = null,
-        debug = false;
+        debug = true;
 
     if (debug) {
         window.console.warn('Debuggin enabled');
@@ -96,14 +93,13 @@
             throw new TypeError();
         }
 
-        if(midiIO === null){
-            setTimeout(function(){
-                    midiIO = new JazzPlugin();
-                    midiIO.requestAccess(accessGranted, errorCallback);
-                }, 0); 
-
+        if (midiIO === null) {
+            setTimeout(function () {
+                midiIO = new JazzPlugin();
+                midiIO.requestAccess(accessGranted, errorCallback);
+            }, 0);
         }
-        
+
     }
     if ('requestMIDIAccess' in exports) {
         return; // namespace is taken already, bail!
@@ -176,7 +172,6 @@
             }
             return ports;
         }
-
 
         function checkPermission(successCB, errorCB) {
             //going to ask permission for the first time
@@ -267,21 +262,83 @@
             }
         }
         /*
+        [Constructor(DOMString type, optional MIDIMessageEventInit eventInitDict)]
         interface MIDIEvent : Event {
             readonly attribute DOMHighResTimeStamp receivedTime;
             readonly attribute Uint8Array          data;
             readonly attribute MIDIPort            port;
         };
+        dictionary MIDIMessageEventInit : EventInit {
+          any data;
+          MIDIPort port;
+        };
         */
+
         //Define the interface in conformance to 4.4 of WebIDL
-        function implementInterface(name){
-            var props = {writable: true, enumerable: false, configurable: true };
-            Object.defineProperty(global, name, props)
-        }   
+
+        function implementMIDIEvent() {
+            var interfaceProtoObj,
+            interfaceObj,
+            protoProps = null;
+            /*
+            There must exist an interface prototype object for every non-callback interface defined, 
+            regardless of whether the interface was declared with the [NoInterfaceObject] 
+            extended attribute. The interface prototype object for a particular 
+            interface has properties that correspond to the regular attributes and regular 
+            operations defined on that interface. 
+            These properties are described in more detail in sections 4.4.6 and 4.4.7 below.
+            */
+            interfaceProtoObj = function MIDIEvent() {};
+
+            /*
+            For every interface ... a corresponding property must exist on 
+            the ECMAScript global object. 
+            The name of the property is the identifier of the interface, 
+            and its value is an object called the interface object.
+            */
+            interfaceObj = function MIDIEvent() {
+                if (!(this instanceof MIDIEvent)) {
+                    throw new TypeError("DOM object constructor cannot be called as a function.")
+                }
+            }
+
+            //The property has the attributes { [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: true }.
+            //The characteristics of an interface object are described in section 4.4.1 below.
+            Object.defineProperty(global, "MIDIEvent", {
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                value: interfaceObj
+            })
+
+            /*
+            The value of the “prototype” property of an interface object for a non-callback interface 
+            must be an object called the interface prototype object. 
+            This object has properties that correspond to the regular attributes and regular operations defined on the interface, 
+            and is described in more detail in section 4.4.3 below.
+            */
+            Object.defineProperty(interfaceObj, "prototype", {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                value: new interfaceProtoObj()
+            });
+
+            //If the [NoInterfaceObject] extended attribute was not specified on the interface, 
+            //then the interface prototype object must also have a property named “constructor”
+            //with attributes { [[Writable]]: true, [[Enumerable]]: false, [[Configurable]]: true } 
+            //whose value is a reference to the interface object for the interface.
+            Object.defineProperty(interfaceProtoObj, "constructor", {
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                value: interfaceObj
+            })
+        }
+        implementMIDIEvent();
 
         function MIDIEvent(data, port) {
-            var e = new window.CustomEvent('message'),
-                receivedTime = perf.now(),
+            var receivedTime = perf.now(),
                 interfaces = {
                     receivedTime: {
                         get: function () {
@@ -298,27 +355,41 @@
                             return port;
                         }
                     },
-                    currentTarget:{
-                        get: function(){
+                    currentTarget: {
+                        get: function () {
                             return;
                         }
                     },
-                    target:{
-                        get: function(){
+                    target: {
+                        get: function () {
                             return;
                         }
                     },
-                    srcElement:{
-                        get: function(){
+                    srcElement: {
+                        get: function () {
                             return;
                         }
                     }
-
-                };
-
-            Object.defineProperties(e, interfaces);
+                },
+                e = new window.CustomEvent('message', {
+                    detail: this
+                });
+            Object.defineProperties(this, interfaces);
             return e;
         }
+        MIDIEvent.prototype = Object.create(Event.prototype);
+
+        /*
+        interface MIDIOutput : MIDIPort {
+            void send (sequence<short> data, optional DOMHighResTimeStamp? timestamp);
+        };
+        */
+
+        function MIDIOutput{
+            MIDIPort.call(this);
+        }
+        MIDIOutput.prototype = Object.create(MIDIPort.prototype);
+
         /*
         interface MIDIPort : EventListener {
             readonly attribute DOMString    id;
@@ -366,7 +437,9 @@
                     //EventListener - can't extend type so need to implement:(
                     addEventListener: {
                         value: function (type, listener, useCapture) {
-                            dispatcher.addEventListener(type, listener, useCapture);
+                            dispatcher.addEventListener(type, function (e) {
+                                listener.call(self, e.detail);
+                            }, useCapture);
                         }
                     },
                     removeEventListener: {
@@ -388,7 +461,7 @@
                             }
                             //check if callable
                             if (aFunction.call && typeof aFunction.call === 'function') {
-                                dispatcher.addEventListener('message', aFunction, false);
+                                this.addEventListener('message', aFunction, false);
                                 eventHandler = aFunction;
                             }
                             return eventHandler;
@@ -401,6 +474,18 @@
                     },
                     send: {
                         value: function (data, timestamp) {
+                            if (!(data instanceof Uint8Array)) {
+                                data = new Uint8Array(data);
+                            }
+                            if ((typeof timestamp) !== "undefined") {
+                                //WebIDl double checks (4.2.14. double)
+                                //1. Let x be ToNumber(V).
+                                timestamp = Number(timestamp);
+                                //2. If x is NaN, +Infinity or −Infinity, then throw a TypeError.
+                                if (isNaN(timestamp) || timestamp === +Infinity || timestamp === -Infinity) {
+                                    throw new TypeError();
+                                }
+                            }
                             return send(self, data, timestamp);
                         }
                     },
@@ -431,11 +516,9 @@
 
             function send(port, data, timestamp) {
                 var delay;
-                data = new Uint8Array(data);
                 if (port.type === 'input' || data.length === 0) {
                     return false;
                 }
-
                 delay = (timestamp) ? Math.floor(timestamp - window.performance.now()) : 0;
 
                 if (delay > 0) {
@@ -456,7 +539,7 @@
         interface MIDIAccess {
             sequence<MIDIPort> getInputs();
             sequence<MIDIPort> getOutputs();
-            MIDIPort           getPortById (DOMString id);
+            MIDIPort           getPortById(DOMString id);
         };
         */
         function MIDIAccess() {
@@ -495,5 +578,3 @@
         Object.defineProperties(this, interfaces);
     }
 }(window, window.navigator, window.performance));
-
-
