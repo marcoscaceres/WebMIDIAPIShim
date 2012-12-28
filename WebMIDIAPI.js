@@ -246,7 +246,7 @@
     (function implementMIDIInput(exports, MIDIEvent, MIDIPort) {
         function checkAccess(object) {
             //Check that no one has stolen the method
-            if (!(object instanceof MIDIAccess)) {
+            if (!(object instanceof MIDIInput)) {
                 throw new TypeError('Illegal invocation');
             }
         }
