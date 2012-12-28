@@ -13,7 +13,7 @@
         //constructors will hold the real object constructors
         constructors = {};
     if ('requestMIDIAccess' in navigator) {
-        console.warn("requestMIDIAccess already defined in navigator, aborting.");
+        console.warn('requestMIDIAccess already defined in navigator, aborting.');
         return;
     }
 
@@ -97,8 +97,8 @@
                     }
                 };
             //MIDIPortType are "input" and "output"
-            if (type !== 'input' && type !== "output") {
-                throw new TypeError("type argument did not match a valid MIDIPortType");
+            if (type !== 'input' && type !== 'output') {
+                throw new TypeError('type argument did not match a valid MIDIPortType');
             }
             //stringify if supplied, nullify if not supplied as per WebIDL
             name = (name) ? String(name) : null;
@@ -155,24 +155,9 @@
                         get: function () {
                             return dict.port;
                         }
-                    },
-                    currentTarget: {
-                        get: function () {
-                            return;
-                        }
-                    },
-                    target: {
-                        get: function () {
-                            return;
-                        }
-                    },
-                    srcElement: {
-                        get: function () {
-                            return;
-                        }
                     }
                 };
-            this.__proto__ = new window.Event(type);
+            this.__proto__.__proto__ = new window.Event(type);
             Object.defineProperties(this, attributes);
             return new window.CustomEvent(type, {detail: this});
         }
@@ -181,7 +166,7 @@
         exportInterfaceObject(MIDIEvent);
         exports.MIDIEvent = MIDIEvent;
     }(constructors));
-    
+
     /*
     interface MIDIOutput : MIDIPort {
         void send (sequence<octet> data, optional double? timestamp);
@@ -297,7 +282,7 @@
         }
         MIDIInput.prototype = Object.create(MIDIPort.prototype);
         MIDIInput.prototype.constructor = MIDIInput;
-        
+
         //implement EventTarget
         MIDIInput.prototype.addEventListener = function (type, listener, useCapture) {
             checkAccess(this);
@@ -305,12 +290,12 @@
                     listener.call(this, e.detail);
                 }, useCapture);
         };
-                
+
         MIDIInput.prototype.removeEventListener = function (type, listener, useCapture) {
             checkAccess(this);
             this.dispatcher.removeEventListener(type, listener, useCapture);
         };
-                
+
         MIDIInput.prototype.dispatchEvent = function (evt) {
             checkAccess(this);
             this.dispatcher.dispatchEvent(evt);
@@ -340,7 +325,7 @@
             checkAccess(this);
             return midi.io.midiInList.slice(0);
         };
-        
+
         MIDIAccess.prototype.getOutputs = function () {
             checkAccess(this);
             return midi.io.midiOutList.slice(0);
@@ -358,11 +343,10 @@
             }
             return null;
         };
+        MIDIAccess.prototype.constructor = MIDIAccess;
         exportInterfaceObject(MIDIAccess);
         exports.MIDIAccess = MIDIAccess;
     }(constructors, midi));
-
-   
 
     /*
     creates instances of the Jazz plugin (http://jazz-soft.net/)
@@ -535,12 +519,23 @@
                 configurable: false,
                 value: Object.create(interfaceProto.prototype)
             };
+        //emulate native code toString()
+        function toStringMaker(name) {
+            return function () { return "function " + name + "() { [native code] }"; };
+        }
         Object.defineProperty(interfaceObject, 'prototype', protoProps);
         for (var i in interfaceProto.prototype) {
             if (interfaceProto.prototype.hasOwnProperty(i)) {
                 interfaceObject.prototype[i] = interfaceProto.prototype[i];
+                interfaceProto.prototype[i].toString = toStringMaker(i);
             }
         }
+        interfaceObject.__proto__ = Object.create({});
+        interfaceProto.__proto__ = Object.create({});
+        interfaceObject.toString = toStringMaker(interfaceObject.name);
+        interfaceProto.toString = toStringMaker(interfaceProto.name);
+        //interfaceObject.constructor = interfaceProto.constructor = {}.constructor;
+        
         Object.defineProperty(window, identifier, {enumerable: false, value: interfaceObject});
     }
 }(window, window.navigator, window.performance));
