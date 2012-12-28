@@ -349,7 +349,7 @@
         MIDIAccess.prototype.getPortById = function (id) {
             var ports;
             checkAccess(this);
-            ports = this.getInputs().concat(this.getOutputs);
+            ports = this.getInputs().concat(this.getOutputs());
             id = String(id);
             for (var i = 0, l = ports.length; i < l; i++) {
                 if (ports[i].id === id) {
